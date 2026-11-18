@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Побег от Меллстроя 3D — Браузерная аркада</title>
+  <meta name="description" content="Бесплатная 3D браузерная игра раннер: управляй курицей, уклоняйся от геликов и неоновых барьеров, собирай золотые яйца и убегай от Меллстроя!" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #070510; font-family: 'Segoe UI', Roboto, Arial, sans-serif; color: #fff; touch-action: none; }
+    #game-container { position: fixed; inset: 0; width: 100%; height: 100%; }
+    canvas { display: block; width: 100%; height: 100%; }
+
+    /* HUD */
+    #hud {
+      position: fixed; top: 0; left: 0; right: 0; padding: 14px 18px;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      pointer-events: none; z-index: 10;
+    }
+    .hud-box {
+      background: rgba(12, 10, 28, 0.72);
+      border: 1.5px solid rgba(255, 215, 0, 0.45);
+      box-shadow: 0 0 18px rgba(255, 0, 170, 0.25);
+      backdrop-filter: blur(6px);
+      border-radius: 14px;
+      padding: 8px 14px;
+    }
+    .hud-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #b9a8ff; }
+    .hud-val { font-size: 24px; font-weight: 900; color: #ffd700; text-shadow: 0 0 10px rgba(255, 215, 0, 0.6); }
+    .hud-sub { font-size: 12px; color: #ff55cc; font-weight: 700; margin-top: 2px; }
+
+    #powerup-bar {
+      position: fixed; top: 82px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 10px; z-index: 10; pointer-events: none;
+    }
+    .buff-pill {
+      padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 800;
+      background: rgba(20, 14, 42, 0.85); border: 1.5px solid #00f0ff;
+      color: #00f0ff; box-shadow: 0 0 14px rgba(0, 240, 255, 0.45);
+      display: none;
+    }
+    .buff-pill.active { display: inline-block; }
+    .buff-pill.chili { border-color: #ff4500; color: #ff9933; box-shadow: 0 0 16px rgba(255, 69, 0, 0.65); }
+
+    /* Danger meter */
+    #danger-wrap {
+      position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+      width: min(340px, 84vw); z-index: 10; pointer-events: none;
+      background: rgba(12, 10, 28, 0.75); border: 1.5px solid rgba(255, 50, 120, 0.55);
+      border-radius: 12px; padding: 7px 12px;
+    }
+    .danger-top { display: flex; justify-content: space-between; font-size: 11px; font-weight: 800; margin-bottom: 5px; color: #ff88bb; }
+    .danger-track { width: 100%; height: 9px; background: rgba(255,255,255,0.12); border-radius: 999px; overflow: hidden; }
+    #danger-fill { width: 35%; height: 100%; background: linear-gradient(90deg, #00f0ff, #ff00aa, #ff2200); transition: width 0.2s; }
+
+    /* Speech bubble */
+    #speech-bubble {
+      position: fixed; bottom: 72px; left: 50%; transform: translateX(-50%) scale(0.8);
+      background: #fff; color: #111; font-weight: 900; font-size: 15px;
+      padding: 9px 16px; border-radius: 18px; border: 3px solid #ffd700;
+      box-shadow: 0 8px 25px rgba(255, 0, 170, 0.55);
+      opacity: 0; transition: all 0.22s ease; pointer-events: none; z-index: 12;
+      white-space: nowrap;
+    }
+    #speech-bubble.show { opacity: 1; transform: translateX(-50%) scale(1); }
+
+    /* Sound button */
+    #sound-btn {
+      pointer-events: auto; cursor: pointer;
+      background: rgba(12, 10, 28, 0.8); border: 1.5px solid rgba(0, 240, 255, 0.5);
+      color: #fff; border-radius: 12px; padding: 8px 12px; font-size: 16px; font-weight: 700;
+    }
+
+    /* Overlay screens */
+    .overlay {
+      position: fixed; inset: 0; z-index: 20;
+      background: radial-gradient(circle at center, rgba(28, 12, 58, 0.86), rgba(6, 4, 16, 0.95));
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 24px; backdrop-filter: blur(6px);
+    }
+    .overlay.hidden { display: none; }
+    .title {
+      font-size: clamp(30px, 6vw, 54px); font-weight: 900; line-height: 1.08;
+      background: linear-gradient(90deg, #ffd700, #ff44cc, #00f0ff);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 4px 18px rgba(255, 0, 170, 0.45));
+      margin-bottom: 12px;
+    }
+    .subtitle { max-width: 480px; font-size: 15px; line-height: 1.5; color: #d8ceff; margin-bottom: 22px; }
+    .controls-grid {
+      display: grid; grid-template-columns: repeat(2, minmax(130px, 1fr)); gap: 10px;
+      max-width: 420px; width: 100%; margin-bottom: 26px;
+    }
+    .ctrl-card {
+      background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 215, 0, 0.28);
+      border-radius: 12px; padding: 10px; font-size: 13px; color: #eee;
+    }
+    .ctrl-card b { color: #ffd700; display: block; margin-bottom: 3px; }
+    .btn-primary {
+      cursor: pointer; border: none; border-radius: 16px;
+      padding: 16px 38px; font-size: 20px; font-weight: 900; letter-spacing: 0.5px;
+      color: #120822; background: linear-gradient(135deg, #ffd700, #ff9900);
+      box-shadow: 0 0 28px rgba(255, 215, 0, 0.65);
+      transition: transform 0.14s ease, box-shadow 0.14s ease;
+    }
+    .btn-primary:hover { transform: scale(1.05); box-shadow: 0 0 36px rgba(255, 215, 0, 0.9); }
+    .btn-primary:active { transform: scale(0.97); }
+    .stats-box {
+      background: rgba(255,255,255,0.08); border: 1.5px solid rgba(255,215,0,0.4);
+      border-radius: 16px; padding: 14px 26px; margin-bottom: 22px;
+    }
+    .stats-box p { font-size: 18px; margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <div id="game-container"></div>
+
+  <div id="hud">
+    <div class="hud-box">
+      <div class="hud-label">Счёт</div>
+      <div class="hud-val" id="score-val">0</div>
+      <div class="hud-sub" id="mult-val">x1 МНОЖИТЕЛЬ</div>
+    </div>
+    <button id="sound-btn" title="Звук">🔊 Звук</button>
+    <div class="hud-box" style="text-align:right;">
+      <div class="hud-label">Рекорд</div>
+      <div class="hud-val" id="best-val">0</div>
+      <div class="hud-sub" id="eggs-val">🥚 0</div>
+    </div>
+  </div>
+
+  <div id="powerup-bar">
+    <div class="buff-pill" id="buff-shield">🛡️ ЗОЛОТОЙ ЩИТ</div>
+    <div class="buff-pill chili" id="buff-chili">🌶️ ТУРБО-ПОЛЁТ</div>
+  </div>
+
+  <div id="speech-bubble">АМ-АМ-АМ! СТОЯТЬ, КУРИЦА!</div>
+
+  <div id="danger-wrap">
+    <div class="danger-top">
+      <span>🐔 КУРИЦА</span>
+      <span id="dist-label">МЕЛЛСТРОЙ БЛИЗКО!</span>
+    </div>
+    <div class="danger-track"><div id="danger-fill"></div></div>
+  </div>
+
+  <!-- Start Screen -->
+  <div class="overlay" id="start-screen">
+    <div class="title">ПОБЕГ ОТ МЕЛЛСТРОЯ 3D</div>
+    <div class="subtitle">
+      Ночной мегаполис, ревущие гелики и пачки денег в воздухе! Управляй дерзкой курицей, уворачивайся от препятствий и не дай Меллстрою тебя догнать.
+    </div>
+    <div class="controls-grid">
+      <div class="ctrl-card"><b>⬅️ ➡️ / Свайп</b>Смена полосы</div>
+      <div class="ctrl-card"><b>⬆️ / Пробел / Тап</b>Двойной прыжок</div>
+      <div class="ctrl-card"><b>⬇️ / S / Свайп вниз</b>Кувырок-подкат</div>
+      <div class="ctrl-card"><b>🥚 🌶️ 🛡️</b>Яйца, чили и щит</div>
+    </div>
+    <button class="btn-primary" id="start-btn">ПОГНАЛИ! 🐔💨</button>
+  </div>
+
+  <!-- Game Over Screen -->
+  <div class="overlay hidden" id="gameover-screen">
+    <div class="title">ПОЙМАЛ! 💸</div>
+    <div class="subtitle" id="death-reason">Меллстрой догнал курицу и закидал донатами!</div>
+    <div class="stats-box">
+      <p>Итоговый счёт: <b style="color:#ffd700" id="final-score">0</b></p>
+      <p>Лучший рекорд: <b style="color:#00f0ff" id="final-best">0</b></p>
+      <p>Собрано золотых яиц: <b style="color:#ff66cc" id="final-eggs">0</b></p>
+    </div>
+    <button class="btn-primary" id="restart-btn">ЕЩЁ РАЗ 🔄</button>
+  </div>
+
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <script>
+    // --- PROCEDURAL WEB AUDIO ---
+    class SoundFX {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+        this.beatTimer = 0;
+      }
+      init() {
+        if (!this.ctx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (AC) this.ctx = new AC();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+      }
+      tone(freq, type, dur, vol = 0.15, slide = null) {
+        if (!this.enabled || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now);
+        if (slide) osc.frequency.exponentialRampToValueAtTime(slide, now + dur);
+        gain.gain.setValueAtTime(vol, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + dur);
+      }
+      jump(doubleJump = false) {
+        this.tone(doubleJump ? 420 : 260, 'sine', 0.18, 0.18, doubleJump ? 780 : 520);
+      }
+      slide() {
+        this.tone(240, 'triangle', 0.22, 0.16, 95);
+      }
+      lane() {
+        this.tone(320, 'sine', 0.08, 0.1, 440);
+      }
+      pickup(type) {
+        if (type === 'chili') {
+          this.tone(330, 'sawtooth', 0.35, 0.18, 880);
+        } else if (type === 'shield') {
+          this.tone(520, 'triangle', 0.3, 0.18, 1040);
+        } else {
+          this.tone(660, 'sine', 0.12, 0.16, 990);
+        }
+      }
+      hit() {
+        this.tone(150, 'sawtooth', 0.35, 0.25, 45);
+      }
+      tickBeat(dt, playing) {
+        if (!playing || !this.enabled || !this.ctx) return;
+        this.beatTimer += dt;
+        if (this.beatTimer >= 0.42) {
+          this.beatTimer = 0;
+          this.tone(68, 'sine', 0.14, 0.12, 36);
+        }
+      }
+    }
+    const sfx = new SoundFX();
+
+    // --- THREE.JS SCENE SETUP ---
+    const container = document.getElementById('game-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x070514);
+    scene.fog = new THREE.FogExp2(0x070514, 0.014);
+
+    const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 160);
+    camera.position.set(0, 5.2, 10.5);
+    camera.lookAt(0, 1.8, -8);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.appendChild(renderer.domElement);
+
+    // Lights
+    const hemiLight = new THREE.HemisphereLight(0x8866ff, 0x1a1033, 0.9);
+    scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffd6fa, 1.3);
+    dirLight.position.set(12, 24, 14);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.set(1024, 1024);
+    dirLight.shadow.camera.near = 1;
+    dirLight.shadow.camera.far = 70;
+    const d = 18;
+    dirLight.shadow.camera.left = -d;
+    dirLight.shadow.camera.right = d;
+    dirLight.shadow.camera.top = d;
+    dirLight.shadow.camera.bottom = -d;
+    scene.add(dirLight);
+
+    const neonPink = new THREE.PointLight(0xff00aa, 2.2, 28);
+    neonPink.position.set(-7, 5, -4);
+    scene.add(neonPink);
+
+    const neonCyan = new THREE.PointLight(0x00f0ff, 2.2, 28);
+    neonCyan.position.set(7, 5, -12);
+    scene.add(neonCyan);
+
+    // --- ROAD & ENVIRONMENT ---
+    const LANES = [-3.0, 0, 3.0];
+    const roadGroup = new THREE.Group();
+    scene.add(roadGroup);
+
+    const roadGeo = new THREE.PlaneGeometry(11.5, 180);
+    const roadMat = new THREE.MeshStandardMaterial({ color: 0x121222, roughness: 0.75, metalness: 0.2 });
+    const roadMesh = new THREE.Mesh(roadGeo, roadMat);
+    roadMesh.rotation.x = -Math.PI / 2;
+    roadMesh.position.z = -70;
+    roadMesh.receiveShadow = true;
+    roadGroup.add(roadMesh);
+
+    // Neon curbs
+    const curbGeo = new THREE.BoxGeometry(0.35, 0.3, 180);
+    const curbMatL = new THREE.MeshStandardMaterial({ color: 0xff00aa, emissive: 0xff00aa, emissiveIntensity: 0.8 });
+    const curbMatR = new THREE.MeshStandardMaterial({ color: 0x00f0ff, emissive: 0x00f0ff, emissiveIntensity: 0.8 });
+    const curbL = new THREE.Mesh(curbGeo, curbMatL);
+    curbL.position.set(-5.8, 0.15, -70);
+    const curbR = new THREE.Mesh(curbGeo, curbMatR);
+    curbR.position.set(5.8, 0.15, -70);
+    roadGroup.add(curbL, curbR);
+
+    // Moving road stripes
+    const stripes = [];
+    const stripeGeo = new THREE.PlaneGeometry(0.18, 2.6);
+    const stripeMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
+    for (let z = 10; z > -150; z -= 6) {
+      [-1.5, 1.5].forEach(x => {
+        const s = new THREE.Mesh(stripeGeo, stripeMat);
+        s.rotation.x = -Math.PI / 2;
+        s.position.set(x, 0.02, z);
+        roadGroup.add(s);
+        stripes.push(s);
+      });
+    }
+
+    // Buildings & Streetlights
+    const scenery = [];
+    const bldgColors = [0x1b1438, 0x221542, 0x131d3b, 0x2a143d];
+    const winColors = [0xffd700, 0x00f0ff, 0xff44cc, 0xffffff];
+
+    function spawnBuilding(zPos, side) {
+      const grp = new THREE.Group();
+      const w = 4.5 + Math.random() * 3.5;
+      const h = 12 + Math.random() * 20;
+      const d = 5 + Math.random() * 4;
+      const mat = new THREE.MeshStandardMaterial({
+        color: bldgColors[Math.floor(Math.random() * bldgColors.length)],
+        roughness: 0.6
+      });
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      mesh.position.y = h / 2;
+      grp.add(mesh);
+
+      // Neon sign strip
+      const signMat = new THREE.MeshBasicMaterial({
+        color: winColors[Math.floor(Math.random() * winColors.length)]
+      });
+      const sign = new THREE.Mesh(new THREE.BoxGeometry(0.25, h * 0.65, 0.4), signMat);
+      sign.position.set(side * (-w / 2 - 0.05), h * 0.5, 0);
+      grp.add(sign);
+
+      grp.position.set(side * (9.5 + w / 2), 0, zPos);
+      scene.add(grp);
+      scenery.push(grp);
+    }
+
+    for (let z = 10; z > -150; z -= 11) {
+      spawnBuilding(z, -1);
+      spawnBuilding(z, 1);
+    }
+
+    // --- 3D CHICKEN MODEL ---
+    function createChicken() {
+      const chicken = new THREE.Group();
+
+      const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+      const combMat = new THREE.MeshStandardMaterial({ color: 0xff1e42, emissive: 0x440011, roughness: 0.3 });
+      const beakMat = new THREE.MeshStandardMaterial({ color: 0xffaa00, roughness: 0.3 });
+      const eyeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+
+      // Body
+      const body = new THREE.Mesh(new THREE.BoxGeometry(1.05, 1.0, 1.3), whiteMat);
+      body.position.y = 0.85;
+      body.castShadow = true;
+      chicken.add(body);
+
+      // Head
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.78, 0.78), whiteMat);
+      head.position.set(0, 1.55, -0.35);
+      head.castShadow = true;
+      chicken.add(head);
+
+      // Red Comb
+      const comb = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.35, 0.55), combMat);
+      comb.position.set(0, 2.05, -0.35);
+      chicken.add(comb);
+
+      // Wattle
+      const wattle = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.28, 0.24), combMat);
+      wattle.position.set(0, 1.25, -0.76);
+      chicken.add(wattle);
+
+      // Beak
+      const beak = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.42, 4), beakMat);
+      beak.rotation.x = -Math.PI / 2;
+      beak.position.set(0, 1.5, -0.92);
+      chicken.add(beak);
+
+      // Eyes
+      const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.14), eyeMat);
+      eyeL.position.set(-0.38, 1.62, -0.45);
+      const eyeR = eyeL.clone();
+      eyeR.position.x = 0.38;
+      chicken.add(eyeL, eyeR);
+
+      // Wings
+      const wingGeo = new THREE.BoxGeometry(0.22, 0.6, 0.85);
+      const wingL = new THREE.Mesh(wingGeo, whiteMat);
+      wingL.position.set(-0.62, 0.9, 0);
+      const wingR = new THREE.Mesh(wingGeo, whiteMat);
+      wingR.position.set(0.62, 0.9, 0);
+      chicken.add(wingL, wingR);
+
+      // Legs
+      const legGeo = new THREE.BoxGeometry(0.16, 0.45, 0.16);
+      const legL = new THREE.Mesh(legGeo, beakMat);
+      legL.position.set(-0.26, 0.22, 0);
+      const legR = new THREE.Mesh(legGeo, beakMat);
+      legR.position.set(0.26, 0.22, 0);
+      chicken.add(legL, legR);
+
+      // Shield bubble
+      const shieldMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(1.45, 20, 20),
+        new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.26, wireframe: true })
+      );
+      shieldMesh.position.y = 1.1;
+      shieldMesh.visible = false;
+      chicken.add(shieldMesh);
+
+      return { root: chicken, wingL, wingR, legL, legR, shieldMesh };
+    }
+    const chickenObj = createChicken();
+    scene.add(chickenObj.root);
+
+    // --- 3D MELLSTROY CHASER MODEL ---
+    function createMellstroy() {
+      const grp = new THREE.Group();
+      const suitMat = new THREE.MeshStandardMaterial({ color: 0x16161e, roughness: 0.4 });
+      const skinMat = new THREE.MeshStandardMaterial({ color: 0xffcfa8, roughness: 0.5 });
+      const goldMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.85, roughness: 0.2 });
+      const glassMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
+
+      // Torso
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(1.35, 1.45, 0.85), suitMat);
+      torso.position.y = 1.45;
+      torso.castShadow = true;
+      grp.add(torso);
+
+      // Gold Chain
+      const chain = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.08, 8, 20), goldMat);
+      chain.rotation.x = 0.35;
+      chain.position.set(0, 1.82, -0.42);
+      grp.add(chain);
+
+      // Head
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.98, 0.92), skinMat);
+      head.position.set(0, 2.68, -0.05);
+      head.castShadow = true;
+      grp.add(head);
+
+      // Beard & Hair
+      const hair = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.32, 0.98), new THREE.MeshStandardMaterial({ color: 0x221712 }));
+      hair.position.set(0, 3.16, -0.05);
+      const beard = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.36, 0.96), new THREE.MeshStandardMaterial({ color: 0x221712 }));
+      beard.position.set(0, 2.34, -0.06);
+      grp.add(hair, beard);
+
+      // Sunglasses
+      const glasses = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.26, 0.16), glassMat);
+      glasses.position.set(0, 2.75, -0.5);
+      grp.add(glasses);
+
+      // Arms
+      const armGeo = new THREE.BoxGeometry(0.36, 1.25, 0.36);
+      const armL = new THREE.Mesh(armGeo, suitMat);
+      armL.position.set(-0.9, 1.5, -0.2);
+      armL.rotation.x = 0.7;
+      const armR = new THREE.Mesh(armGeo, suitMat);
+      armR.position.set(0.9, 1.5, -0.2);
+      armR.rotation.x = 0.7;
+      grp.add(armL, armR);
+
+      // Legs
+      const legGeo = new THREE.BoxGeometry(0.44, 0.85, 0.44);
+      const legL = new THREE.Mesh(legGeo, suitMat);
+      legL.position.set(-0.36, 0.42, 0);
+      const legR = new THREE.Mesh(legGeo, suitMat);
+      legR.position.set(0.36, 0.42, 0);
+      grp.add(legL, legR);
+
+      grp.position.set(0, 0, 4.4);
+      scene.add(grp);
+      return { root: grp, armL, armR, legL, legR };
+    }
+    const chaser = createMellstroy();
+
+    // --- MONEY PARTICLES ---
+    const bills = [];
+    const billGeo = new THREE.PlaneGeometry(0.55, 0.28);
+    const billMat = new THREE.MeshBasicMaterial({ color: 0x35e86b, side: THREE.DoubleSide });
+    function spawnMoneyBurst(x, y, z) {
+      for (let i = 0; i < 4; i++) {
+        const b = new THREE.Mesh(billGeo, billMat);
+        b.position.set(x + (Math.random() - 0.5) * 1.4, y + 1.8, z);
+        b.userData = {
+          vx: (Math.random() - 0.5) * 4,
+          vy: 2 + Math.random() * 3,
+          vz: 2 + Math.random() * 3,
+          life: 1.1
+        };
+        scene.add(b);
+        bills.push(b);
+      }
+    }
+
+    // --- OBSTACLES & COLLECTIBLES ---
+    const obstacles = [];
+    const pickups = [];
+
+    function spawnObstacle(zPos) {
+      const laneIdx = Math.floor(Math.random() * 3);
+      const laneX = LANES[laneIdx];
+      const r = Math.random();
+      const grp = new THREE.Group();
+
+      if (r < 0.38) {
+        // Black & Gold G-Wagon (jump over or dodge)
+        const carBody = new THREE.Mesh(
+          new THREE.BoxGeometry(2.15, 1.45, 3.8),
+          new THREE.MeshStandardMaterial({ color: 0x0c0c12, metalness: 0.7, roughness: 0.25 })
+        );
+        carBody.position.y = 0.95;
+        carBody.castShadow = true;
+        grp.add(carBody);
+
+        const trim = new THREE.Mesh(
+          new THREE.BoxGeometry(2.2, 0.14, 3.85),
+          new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xaa7700 })
+        );
+        trim.position.y = 0.95;
+        grp.add(trim);
+
+        const hl = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.25, 0.1), new THREE.MeshBasicMaterial({ color: 0x00f0ff }));
+        hl.position.set(0, 0.85, 1.92);
+        grp.add(hl);
+
+        grp.userData = { type: 'gelik', height: 1.75, halfD: 1.8 };
+      } else if (r < 0.72) {
+        // Neon Road Barrier (low jump)
+        const bar = new THREE.Mesh(
+          new THREE.BoxGeometry(2.2, 0.95, 0.6),
+          new THREE.MeshStandardMaterial({ color: 0xff0077, emissive: 0x880044 })
+        );
+        bar.position.y = 0.55;
+        bar.castShadow = true;
+        grp.add(bar);
+        grp.userData = { type: 'barrier', height: 1.05, halfD: 0.45 };
+      } else {
+        // High Neon Arch (slide under!)
+        const pillarGeo = new THREE.BoxGeometry(0.32, 2.7, 0.5);
+        const pillarMat = new THREE.MeshStandardMaterial({ color: 0x00f0ff, emissive: 0x006688 });
+        const pL = new THREE.Mesh(pillarGeo, pillarMat);
+        pL.position.set(-1.05, 1.35, 0);
+        const pR = new THREE.Mesh(pillarGeo, pillarMat);
+        pR.position.set(1.05, 1.35, 0);
+        const topBeam = new THREE.Mesh(
+          new THREE.BoxGeometry(2.45, 1.35, 0.65),
+          new THREE.MeshStandardMaterial({ color: 0xffaa00, emissive: 0x994400 })
+        );
+        topBeam.position.set(0, 2.05, 0);
+        grp.add(pL, pR, topBeam);
+        grp.userData = { type: 'arch', minSafeSlide: true, halfD: 0.45 };
+      }
+
+      grp.position.set(laneX, 0, zPos);
+      scene.add(grp);
+      obstacles.push(grp);
+
+      // Spawn collectible on another lane
+      const freeLanes = [0, 1, 2].filter(i => i !== laneIdx);
+      const pLane = LANES[freeLanes[Math.floor(Math.random() * freeLanes.length)]];
+      spawnPickup(pLane, zPos - 2);
+    }
+
+    function spawnPickup(x, z) {
+      const roll = Math.random();
+      let type = 'egg';
+      let mesh;
+      if (roll < 0.74) {
+        type = 'egg';
+        mesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.42, 16, 16),
+          new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xaa6600, metalness: 0.8, roughness: 0.2 })
+        );
+        mesh.scale.set(0.85, 1.22, 0.85);
+      } else if (roll < 0.89) {
+        type = 'shield';
+        mesh = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.5),
+          new THREE.MeshStandardMaterial({ color: 0x00f0ff, emissive: 0x0088aa })
+        );
+      } else {
+        type = 'chili';
+        mesh = new THREE.Mesh(
+          new THREE.ConeGeometry(0.32, 0.95, 12),
+          new THREE.MeshStandardMaterial({ color: 0xff2200, emissive: 0xaa1100 })
+        );
+        mesh.rotation.z = 0.4;
+      }
+      mesh.position.set(x, 1.0, z);
+      mesh.userData = { type };
+      scene.add(mesh);
+      pickups.push(mesh);
+    }
+
+    // --- GAME STATE ---
+    const PHRASES = [
+      "АМ-АМ-АМ! СТОЯТЬ, КУРИЦА!",
+      "ЗАНОСИ БАБКИ НА БАЗУ! 💸",
+      "КУДА ПОЛЕТЕЛА?! ЭТО ГАЗ!",
+      "СУЕТА НА РАЙОНЕ! 🔥",
+      "ЩА ДОГОНЮ — БУДЕТ КОНТЕНТ!"
+    ];
+
+    let state = {
+      playing: false,
+      score: 0,
+      best: Number(localStorage.getItem('mell_chicken_3d_best') || 0),
+      eggs: 0,
+      mult: 1,
+      speed: 24,
+      lane: 1,
+      targetX: 0,
+      y: 0,
+      vy: 0,
+      jumps: 0,
+      slideTimer: 0,
+      shieldTimer: 0,
+      chiliTimer: 0,
+      danger: 35, // 0..100 (100 = caught)
+      spawnZ: -35,
+      phraseTimer: 3,
+      shake: 0
+    };
+
+    const elScore = document.getElementById('score-val');
+    const elBest = document.getElementById('best-val');
+    const elEggs = document.getElementById('eggs-val');
+    const elMult = document.getElementById('mult-val');
+    const elDanger = document.getElementById('danger-fill');
+    const elSpeech = document.getElementById('speech-bubble');
+    const buffShield = document.getElementById('buff-shield');
+    const buffChili = document.getElementById('buff-chili');
+
+    elBest.textContent = state.best;
+
+    function sayPhrase(customText = null) {
+      elSpeech.textContent = customText || PHRASES[Math.floor(Math.random() * PHRASES.length)];
+      elSpeech.classList.add('show');
+      clearTimeout(elSpeech._t);
+      elSpeech._t = setTimeout(() => elSpeech.classList.remove('show'), 2200);
+    }
+
+    function clearWorld() {
+      obstacles.forEach(o => scene.remove(o));
+      obstacles.length = 0;
+      pickups.forEach(p => scene.remove(p));
+      pickups.length = 0;
+      bills.forEach(b => scene.remove(b));
+      bills.length = 0;
+    }
+
+    function startGame() {
+      sfx.init();
+      clearWorld();
+      state.playing = true;
+      state.score = 0;
+      state.eggs = 0;
+      state.mult = 1;
+      state.speed = 25;
+      state.lane = 1;
+      state.targetX = 0;
+      state.y = 0;
+      state.vy = 0;
+      state.jumps = 0;
+      state.slideTimer = 0;
+      state.shieldTimer = 0;
+      state.chiliTimer = 0;
+      state.danger = 32;
+      state.spawnZ = -32;
+      state.shake = 0;
+
+      chickenObj.root.position.set(0, 0, 0);
+      chickenObj.root.rotation.set(0, 0, 0);
+      chickenObj.root.scale.set(1, 1, 1);
+
+      for (let i = 0; i < 6; i++) {
+        spawnObstacle(state.spawnZ);
+        state.spawnZ -= 22;
+      }
+
+      document.getElementById('start-screen').classList.add('hidden');
+      document.getElementById('gameover-screen').classList.add('hidden');
+      sayPhrase("ПОГНАЛИ! ДОГОНЯЙ, ЕСЛИ СМОЖЕШЬ!");
+    }
+
+    function gameOver(reason) {
+      state.playing = false;
+      sfx.hit();
+      state.shake = 0.6;
+      if (Math.floor(state.score) > state.best) {
+        state.best = Math.floor(state.score);
+        localStorage.setItem('mell_chicken_3d_best', state.best);
+      }
+      elBest.textContent = state.best;
+      document.getElementById('death-reason').textContent = reason;
+      document.getElementById('final-score').textContent = Math.floor(state.score);
+      document.getElementById('final-best').textContent = state.best;
+      document.getElementById('final-eggs').textContent = state.eggs;
+      document.getElementById('gameover-screen').classList.remove('hidden');
+    }
+
+    // --- CONTROLS ---
+    function moveLane(dir) {
+      if (!state.playing) return;
+      const next = Math.max(0, Math.min(2, state.lane + dir));
+      if (next !== state.lane) {
+        state.lane = next;
+        state.targetX = LANES[state.lane];
+        sfx.lane();
+      }
+    }
+
+    function doJump() {
+      if (!state.playing) return;
+      if (state.jumps < 2) {
+        state.vy = state.jumps === 0 ? 15.5 : 13.8;
+        state.jumps++;
+        state.slideTimer = 0;
+        sfx.jump(state.jumps === 2);
+      }
+    }
+
+    function doSlide() {
+      if (!state.playing) return;
+      state.slideTimer = 0.68;
+      if (state.y > 0) state.vy = -22;
+      sfx.slide();
+    }
+
+    window.addEventListener('keydown', e => {
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') moveLane(-1);
+      else if (e.code === 'ArrowRight' || e.code === 'KeyD') moveLane(1);
+      else if (e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Space') doJump();
+      else if (e.code === 'ArrowDown' || e.code === 'KeyS') doSlide();
+    });
+
+    // Touch Swipes & Tap
+    let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
+    window.addEventListener('touchstart', e => {
+      if (!e.touches.length) return;
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      touchStartTime = Date.now();
+    }, { passive: true });
+
+    window.addEventListener('touchend', e => {
+      if (!state.playing || !e.changedTouches.length) return;
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      const dy = e.changedTouches[0].clientY - touchStartY;
+      const dt = Date.now() - touchStartTime;
+      if (Math.abs(dx) < 24 && Math.abs(dy) < 24 && dt < 300) {
+        doJump();
+        return;
+      }
+      if (Math.abs(dx) > Math.abs(dy)) {
+        moveLane(dx > 0 ? 1 : -1);
+      } else {
+        if (dy < -24) doJump();
+        else if (dy > 24) doSlide();
+      }
+    }, { passive: true });
+
+    document.getElementById('start-btn').addEventListener('click', startGame);
+    document.getElementById('restart-btn').addEventListener('click', startGame);
+    document.getElementById('sound-btn').addEventListener('click', () => {
+      sfx.init();
+      sfx.enabled = !sfx.enabled;
+      document.getElementById('sound-btn').textContent = sfx.enabled ? '🔊 Звук' : '🔇 Тихо';
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // --- MAIN LOOP ---
+    const clock = new THREE.Clock();
+    let runCycle = 0;
+    let moneyTimer = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.05);
+
+      if (state.playing) {
+        sfx.tickBeat(dt, true);
+
+        // Speed & Score progression
+        const activeSpeed = state.chiliTimer > 0 ? state.speed * 1.48 : state.speed;
+        state.speed = Math.min(48, state.speed + dt * 0.45);
+        state.score += activeSpeed * dt * 1.8 * state.mult;
+        state.danger = Math.max(18, state.danger - dt * 2.2);
+
+        // Timers
+        if (state.shieldTimer > 0) state.shieldTimer -= dt;
+        if (state.chiliTimer > 0) state.chiliTimer -= dt;
+        if (state.slideTimer > 0) state.slideTimer -= dt;
+
+        buffShield.classList.toggle('active', state.shieldTimer > 0);
+        buffChili.classList.toggle('active', state.chiliTimer > 0);
+        chickenObj.shieldMesh.visible = state.shieldTimer > 0 || state.chiliTimer > 0;
+
+        // Chicken Horizontal & Vertical Physics
+        const cx = chickenObj.root.position.x;
+        chickenObj.root.position.x += (state.targetX - cx) * Math.min(1, dt * 14);
+        chickenObj.root.rotation.z = (cx - state.targetX) * 0.22;
+
+        if (state.chiliTimer > 0) {
+          // Turbo flight
+          const targetFlyY = 2.6 + Math.sin(runCycle * 3) * 0.25;
+          state.y += (targetFlyY - state.y) * Math.min(1, dt * 10);
+          state.vy = 0;
+          state.jumps = 0;
+        } else {
+          state.y += state.vy * dt;
+          if (state.y > 0) {
+            state.vy -= 42 * dt;
+          } else {
+            state.y = 0;
+            state.vy = 0;
+            state.jumps = 0;
+          }
+        }
+        chickenObj.root.position.y = state.y;
+
+        // Slide squash animation
+        if (state.slideTimer > 0 && state.chiliTimer <= 0) {
+          chickenObj.root.scale.set(1.2, 0.48, 1.2);
+          chickenObj.root.rotation.x = -0.35;
+        } else {
+          chickenObj.root.scale.lerp(new THREE.Vector3(1, 1, 1), Math.min(1, dt * 16));
+          chickenObj.root.rotation.x = state.chiliTimer > 0 ? -0.45 : 0;
+        }
+
+        // Limb animation
+        runCycle += dt * activeSpeed * 0.65;
+        chickenObj.legL.rotation.x = Math.sin(runCycle) * 0.85;
+        chickenObj.legR.rotation.x = -Math.sin(runCycle) * 0.85;
+        chickenObj.wingL.rotation.z = 0.35 + Math.abs(Math.sin(runCycle * 1.4)) * 0.65;
+        chickenObj.wingR.rotation.z = -0.35 - Math.abs(Math.sin(runCycle * 1.4)) * 0.65;
+
+        // Chaser (Mellstroy) positioning based on danger
+        const chaserZ = 7.2 - (state.danger / 100) * 5.6;
+        chaser.root.position.z += (chaserZ - chaser.root.position.z) * Math.min(1, dt * 6);
+        chaser.root.position.x += (chickenObj.root.position.x - chaser.root.position.x) * Math.min(1, dt * 5);
+        chaser.root.position.y = Math.abs(Math.sin(runCycle * 0.9)) * 0.22;
+        chaser.legL.rotation.x = -Math.sin(runCycle * 0.9) * 0.75;
+        chaser.legR.rotation.x = Math.sin(runCycle * 0.9) * 0.75;
+        chaser.armL.rotation.z = Math.sin(runCycle) * 0.25;
+        chaser.armR.rotation.z = -Math.sin(runCycle) * 0.25;
+
+        // Money & Phrases
+        moneyTimer += dt;
+        if (moneyTimer > 0.65) {
+          moneyTimer = 0;
+          spawnMoneyBurst(chaser.root.position.x, chaser.root.position.y, chaser.root.position.z);
+        }
+        state.phraseTimer -= dt;
+        if (state.phraseTimer <= 0) {
+          state.phraseTimer = 5.5 + Math.random() * 4;
+          sayPhrase();
+        }
+
+        // Scroll road stripes & buildings
+        stripes.forEach(s => {
+          s.position.z += activeSpeed * dt;
+          if (s.position.z > 12) s.position.z -= 162;
+        });
+        scenery.forEach(b => {
+          b.position.z += activeSpeed * dt;
+          if (b.position.z > 16) b.position.z -= 165;
+        });
+
+        // Spawn & Move Obstacles
+        state.spawnZ += activeSpeed * dt;
+        while (state.spawnZ > -140) {
+          const gap = Math.max(15, 22 - state.speed * 0.14);
+          spawnObstacle(state.spawnZ);
+          state.spawnZ -= gap;
+        }
+
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+          const obs = obstacles[i];
+          obs.position.z += activeSpeed * dt;
+
+          // Collision Check
+          const dz = Math.abs(obs.position.z - chickenObj.root.position.z);
+          const dx = Math.abs(obs.position.x - chickenObj.root.position.x);
+          if (dz < obs.userData.halfD + 0.45 && dx < 1.05) {
+            let safe = false;
+            if (state.chiliTimer > 0) {
+              safe = true; // Smash through in chili flight!
+              scene.remove(obs);
+              obstacles.splice(i, 1);
+              state.score += 150;
+              sfx.pickup('chili');
+              continue;
+            }
+            if (obs.userData.minSafeSlide && state.slideTimer > 0) safe = true;
+            if (obs.userData.height && state.y > obs.userData.height - 0.15) safe = true;
+
+            if (!safe) {
+              scene.remove(obs);
+              obstacles.splice(i, 1);
+              if (state.shieldTimer > 0) {
+                state.shieldTimer = 0;
+                sfx.hit();
+                state.shake = 0.35;
+                sayPhrase("ЩИТ СПАС КУРИЦУ! 🛡️");
+              } else {
+                state.danger += 38;
+                state.mult = 1;
+                state.shake = 0.45;
+                sfx.hit();
+                if (state.danger >= 100) {
+                  gameOver("Курица споткнулась о препятствие, и Меллстрой тут же её догнал!");
+                  break;
+                } else {
+                  sayPhrase("ОПА! СПОТКНУЛАСЬ! МЕЛЛСТРОЙ БЛИЗКО!");
+                }
+              }
+              continue;
+            }
+          }
+
+          if (obs.position.z > 14) {
+            scene.remove(obs);
+            obstacles.splice(i, 1);
+          }
+        }
+
+        // Move & Collect Pickups
+        for (let i = pickups.length - 1; i >= 0; i--) {
+          const p = pickups[i];
+          p.position.z += activeSpeed * dt;
+          p.rotation.y += dt * 3.2;
+
+          const dz = Math.abs(p.position.z - chickenObj.root.position.z);
+          const dx = Math.abs(p.position.x - chickenObj.root.position.x);
+          const dy = Math.abs(p.position.y - (state.y + 0.9));
+
+          if (dz < 1.1 && dx < 1.15 && dy < 1.45) {
+            const t = p.userData.type;
+            sfx.pickup(t);
+            if (t === 'egg') {
+              state.eggs++;
+              state.mult = Math.min(8, 1 + Math.floor(state.eggs / 5));
+              state.score += 100 * state.mult;
+              state.danger = Math.max(15, state.danger - 4);
+            } else if (t === 'shield') {
+              state.shieldTimer = 8.0;
+              sayPhrase("ЗОЛОТОЙ ЩИТ АКТИВИРОВАН! 🛡️");
+            } else if (t === 'chili') {
+              state.chiliTimer = 5.5;
+              state.danger = Math.max(12, state.danger - 18);
+              sayPhrase("ОСТРЫЙ ПЕРЕЦ! ТУРБО-ПОЛЁТ! 🌶️🔥");
+            }
+            scene.remove(p);
+            pickups.splice(i, 1);
+            continue;
+          }
+
+          if (p.position.z > 14) {
+            scene.remove(p);
+            pickups.splice(i, 1);
+          }
+        }
+
+        // Update HUD
+        elScore.textContent = Math.floor(state.score);
+        elEggs.textContent = `🥚 ${state.eggs}`;
+        elMult.textContent = `x${state.mult} МНОЖИТЕЛЬ`;
+        elDanger.style.width = `${Math.min(100, Math.round(state.danger))}%`;
+      }
+
+      // Update floating money bills
+      for (let i = bills.length - 1; i >= 0; i--) {
+        const b = bills[i];
+        b.position.x += b.userData.vx * dt;
+        b.position.y += b.userData.vy * dt;
+        b.position.z += b.userData.vz * dt;
+        b.rotation.x += dt * 5;
+        b.rotation.y += dt * 4;
+        b.userData.life -= dt;
+        if (b.userData.life <= 0) {
+          scene.remove(b);
+          bills.splice(i, 1);
+        }
+      }
+
+      // Camera smooth follow + screen shake
+      const shakeX = state.shake > 0 ? (Math.random() - 0.5) * state.shake : 0;
+      const shakeY = state.shake > 0 ? (Math.random() - 0.5) * state.shake : 0;
+      if (state.shake > 0) state.shake = Math.max(0, state.shake - dt * 1.8);
+
+      camera.position.x += (chickenObj.root.position.x * 0.45 - camera.position.x) * Math.min(1, dt * 6) + shakeX;
+      camera.position.y += (5.2 + state.y * 0.35 - camera.position.y) * Math.min(1, dt * 6) + shakeY;
+      camera.lookAt(chickenObj.root.position.x * 0.3, 1.8 + state.y * 0.25, -8);
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+  </script>
+</body>
+</html>
